@@ -416,7 +416,7 @@ async def edit_resume(
         # Apply all resume data to the document
         print("DEBUG: About to apply resume data to document...")
         
-        # Use JSON template replacement (supports nested placeholders)
+        # Use JSON template replacement (handles individual placeholders like {{company1}}, {{highlights1}})
         replacements_made = processor.apply_json_template_replacement()
         print(f"JSON template replacements made: {replacements_made}")
 

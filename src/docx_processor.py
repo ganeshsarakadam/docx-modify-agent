@@ -275,6 +275,22 @@ class DocxProcessor:
         if formatting['font_color']:
             run.font.color.rgb = formatting['font_color']
     
+    def _apply_bullet_formatting(self, paragraph: Paragraph) -> None:
+        """Apply proper indentation and spacing for bullet points"""
+        from docx.shared import Inches, Pt
+        
+        # Set left indentation for bullet points (0.5 inch from left margin)
+        paragraph.paragraph_format.left_indent = Inches(0.5)
+        
+        # Set hanging indent to align bullet text properly
+        paragraph.paragraph_format.first_line_indent = Inches(-0.25)
+        
+        # Add some space after each bullet point for better readability
+        paragraph.paragraph_format.space_after = Pt(3)
+        
+        # Ensure consistent line spacing
+        paragraph.paragraph_format.line_spacing = 1.15
+    
     def _rebuild_paragraph_with_formatting(
         self, 
         paragraph: Paragraph, 
@@ -341,46 +357,34 @@ class DocxProcessor:
                 placeholder_start = full_text.find(search_text)
                 
                 if placeholder_start != -1:
-                    # Get the paragraph containing the placeholder
-                    placeholder_paragraph = paragraph
-                    parent_element = placeholder_paragraph._element.getparent()
-                    placeholder_index = list(parent_element).index(placeholder_paragraph._element)
+                    # Instead of clearing the entire paragraph, use the formatting-preserving replacement
+                    count = self._replace_with_formatting_preservation(
+                        paragraph, search_text, f"• {bullet_items[0]}", False
+                    )
                     
-                    # Replace the placeholder text with first bullet point
-                    before_text = full_text[:placeholder_start]
-                    after_text = full_text[placeholder_start + len(search_text):]
-                    
-                    # Update the placeholder paragraph with first bullet point
-                    placeholder_paragraph.clear()
-                    if before_text.strip():
-                        placeholder_paragraph.add_run(before_text)
-                    
-                    first_bullet_run = placeholder_paragraph.add_run(f"• {bullet_items[0]}")
-                    if template_bullet_style:
-                        self._apply_run_formatting(first_bullet_run, template_bullet_style)
-                    
-                    if after_text.strip():
-                        placeholder_paragraph.add_run(after_text)
-                    
-                    # Add additional bullet points as new paragraphs
-                    for i, item in enumerate(bullet_items[1:], 1):
-                        # Create new paragraph for each additional bullet point
-                        new_paragraph = self.document.add_paragraph()
-                        bullet_run = new_paragraph.add_run(f"• {item}")
+                    if count > 0:
+                        replacements_made += count
                         
-                        # Apply template formatting if available
-                        if template_bullet_style:
-                            self._apply_run_formatting(bullet_run, template_bullet_style)
+                        # Apply proper indentation and spacing to the first bullet point
+                        self._apply_bullet_formatting(paragraph)
                         
-                        # Copy paragraph style from template if available
-                        if hasattr(placeholder_paragraph, 'style'):
-                            new_paragraph.style = placeholder_paragraph.style
+                        # Add additional bullet points as new paragraphs after this one
+                        parent_element = paragraph._element.getparent()
+                        paragraph_index = list(parent_element).index(paragraph._element)
                         
-                        # Insert the new paragraph after the current one
-                        new_p_element = new_paragraph._element
-                        parent_element.insert(placeholder_index + i, new_p_element)
+                        for i, item in enumerate(bullet_items[1:], 1):
+                            # Create new paragraph for each additional bullet point
+                            new_paragraph = self.document.add_paragraph()
+                            bullet_run = new_paragraph.add_run(f"• {item}")
+                            if template_bullet_style:
+                                self._apply_run_formatting(bullet_run, template_bullet_style)
+                            
+                            # Apply proper indentation and spacing for bullet points
+                            self._apply_bullet_formatting(new_paragraph)
+                            
+                            # Insert the new paragraph after the current one
+                            parent_element.insert(paragraph_index + i, new_paragraph._element)
                     
-                    replacements_made += 1
                     break  # Only replace the first occurrence
         
         return replacements_made

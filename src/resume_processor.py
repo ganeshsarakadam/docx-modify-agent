@@ -134,23 +134,100 @@ class ResumeProcessor(DocxProcessor):
         if not isinstance(experiences, list):
             return 0
         
-        # Format experience entries
-        experience_text = ""
-        for exp in experiences:
-            experience_text += f"\n{exp.get('company', '')} - {exp.get('title', '')}\n"
-            experience_text += f"{exp.get('location', '')} | {exp.get('duration', '')}\n"
-            
-            highlights = exp.get('highlights', [])
-            for highlight in highlights:
-                experience_text += f"• {highlight}\n"
-            experience_text += "\n"
+        # Build formatted experience content
+        experience_content = []
         
-        return self.find_and_replace_text(
+        for exp in experiences:
+            # Add company and title line
+            company_title = f"{exp.get('company', '')} - {exp.get('title', '')}"
+            experience_content.append(company_title)
+            
+            # Add location and duration line  
+            location_duration = f"{exp.get('location', '')} | {exp.get('duration', '')}"
+            experience_content.append(location_duration)
+            
+            # Add highlights as bullet points
+            highlights = exp.get('highlights', [])
+            if highlights:
+                for highlight in highlights:
+                    experience_content.append(f"• {highlight}")
+            
+            # Add empty line between experiences
+            experience_content.append("")
+        
+        # Join all content and replace
+        experience_text = "\n".join(experience_content).strip()
+        
+        # First, replace the placeholder with basic text
+        replacements = self.find_and_replace_text(
             search_text=placeholder,
-            replace_text=experience_text.strip(),
+            replace_text=experience_text,
             preserve_formatting=True,
             case_sensitive=True
         )
+        
+        # Then apply bullet formatting to lines that start with "•"
+        if replacements > 0:
+            self._apply_bullet_formatting_to_document()
+        
+        return replacements
+    
+    def _apply_bullet_formatting_to_document(self) -> None:
+        """Apply bullet formatting to all paragraphs that contain bullet characters"""
+        if not self.document:
+            return
+            
+        # Find paragraphs that contain bullets and split them properly
+        paragraphs_to_process = []
+        for i, paragraph in enumerate(self.document.paragraphs):
+            text = paragraph.text
+            if '•' in text and '\n' in text:
+                paragraphs_to_process.append((i, paragraph))
+        
+        # Process in reverse order to avoid index shifting
+        for para_index, paragraph in reversed(paragraphs_to_process):
+            self._split_paragraph_with_bullets(paragraph, para_index)
+            
+    def _split_paragraph_with_bullets(self, paragraph, para_index: int) -> None:
+        """Split a paragraph containing bullets into separate paragraphs with proper formatting"""
+        if not self.document:
+            return
+            
+        text = paragraph.text
+        if '•' not in text or '\n' not in text:
+            return
+            
+        # Split the text into lines
+        lines = text.split('\n')
+        if len(lines) <= 1:
+            return
+            
+        # Clear the original paragraph and add the first line
+        paragraph.clear()
+        first_line = lines[0].strip()
+        if first_line:
+            paragraph.add_run(first_line)
+        
+        # Get the parent element for inserting new paragraphs
+        parent_element = paragraph._element.getparent()
+        paragraph_element_index = list(parent_element).index(paragraph._element)
+        
+        # Add subsequent lines as new paragraphs
+        for i, line in enumerate(lines[1:], 1):
+            line = line.strip()
+            if not line:  # Skip empty lines
+                continue
+                
+            # Create new paragraph
+            new_para = self.document.add_paragraph()
+            new_para.add_run(line)
+            
+            # Apply bullet formatting if this line starts with bullet
+            if line.startswith('•'):
+                self._apply_bullet_formatting(new_para)
+            
+            # Insert the new paragraph after the original
+            parent_element.insert(paragraph_element_index + i, new_para._element)
     
     def apply_projects(self, placeholder: str = "{{PROJECTS}}") -> int:
         """
@@ -169,22 +246,39 @@ class ResumeProcessor(DocxProcessor):
         if not isinstance(projects, list):
             return 0
         
-        # Format project entries
-        projects_text = ""
-        for project in projects:
-            projects_text += f"\n{project.get('name', '')}\n"
-            
-            highlights = project.get('highlights', [])
-            for highlight in highlights:
-                projects_text += f"• {highlight}\n"
-            projects_text += "\n"
+        # Build formatted projects content
+        projects_content = []
         
-        return self.find_and_replace_text(
+        for project in projects:
+            # Add project name
+            project_name = project.get('name', '')
+            projects_content.append(project_name)
+            
+            # Add project highlights as bullet points
+            highlights = project.get('highlights', [])
+            if highlights:
+                for highlight in highlights:
+                    projects_content.append(f"• {highlight}")
+            
+            # Add empty line between projects
+            projects_content.append("")
+        
+        # Join all content and replace
+        projects_text = "\n".join(projects_content).strip()
+        
+        # First, replace the placeholder with basic text
+        replacements = self.find_and_replace_text(
             search_text=placeholder,
-            replace_text=projects_text.strip(),
+            replace_text=projects_text,
             preserve_formatting=True,
             case_sensitive=True
         )
+        
+        # Then apply bullet formatting to lines that start with "•"
+        if replacements > 0:
+            self._apply_bullet_formatting_to_document()
+        
+        return replacements
     
     def apply_education(self, placeholder: str = "{{EDUCATION}}") -> int:
         """
@@ -435,10 +529,10 @@ class ResumeProcessor(DocxProcessor):
             else:
                 print(f"DEBUG: No value found for placeholder '{placeholder_key}' in JSON data")
         
-        # Remove placeholder bullet points after all replacements
-        placeholder_removals = self.remove_placeholder_bullet_points("Add highlights with this style.")
-        if placeholder_removals > 0:
-            print(f"DEBUG: Removed {placeholder_removals} placeholder bullet points")
+        # No need to remove placeholder bullet points since they're not in the template anymore
+        
+        # Apply bullet formatting to any paragraphs containing bullets
+        self._apply_bullet_formatting_to_document()
         
         return replacements_made
     
@@ -451,47 +545,25 @@ class ResumeProcessor(DocxProcessor):
             "NAME": "name",  # Support uppercase NAME
             "name": "name",
             "professional_summary": "professional_summary",
+            "PROFESSIONAL_SUMMARY": "professional_summary",  # Uppercase version
+            "TECHNICAL_SKILLS": "technical_skills",  # Uppercase version
+            "technical_skills": "technical_skills",
+            # Note: PROFESSIONAL_EXPERIENCE and PROJECTS are handled by specialized methods
+            # Note: EDUCATION is handled by specialized method
             
-            # Experience mappings (short versions)
-            "company1": "professional_experience.0.company",
-            "location1": "professional_experience.0.location", 
-            "title1": "professional_experience.0.title",
-            "duration1": "professional_experience.0.duration",
+            # Experience mappings (simplified - only highlights)
             "highlights1": "professional_experience.0.highlights",
-            
-            "company2": "professional_experience.1.company",
-            "location2": "professional_experience.1.location",
-            "title2": "professional_experience.1.title", 
-            "duration2": "professional_experience.1.duration",
             "highlights2": "professional_experience.1.highlights",
-            
-            "company3": "professional_experience.2.company",
-            "location3": "professional_experience.2.location",
-            "title3": "professional_experience.2.title",
-            "duration3": "professional_experience.2.duration", 
             "highlights3": "professional_experience.2.highlights",
             
-            # Experience mappings (old template compatibility)
-            "company": "professional_experience.0.company",
-            "location": "professional_experience.0.location",
-            "title": "professional_experience.0.title",
-            "highlights": "professional_experience.0.highlights",  # Use highlights field
-            "responsibilities": "professional_experience.0.highlights",  # Support both fields
-            "position": "professional_experience.0.position",  # Alternative to title
-            "duration": "professional_experience.0.duration",
-            
-            # Project mappings
-            "project1": "projects.0.name",
-            "projects1": "projects.0.name",  # Support both formats
+            # Project mappings (simplified - name and highlights only)
+            "projects1": "projects.0.name",
+            "projects2": "projects.1.name",
             "project1_highlights": "projects.0.highlights",
-            "project2": "projects.1.name",
-            "projects2": "projects.1.name",  # Support both formats 
             "project2_highlights": "projects.1.highlights",
             
-            # Contact mappings (even shorter)
-            "phone": "contact.phone",
-            "email": "contact.email", 
-            "linkedin": "contact.linkedin"
+            # Education mappings (if needed)
+            "education": "education",
         }
     
     def _get_nested_json_value(self, data: Dict[str, Any], path: str) -> Any:
@@ -505,12 +577,18 @@ class ResumeProcessor(DocxProcessor):
             
             for key in keys:
                 if key.isdigit():  # Array index
-                    value = value[int(key)]
+                    if isinstance(value, list) and int(key) < len(value):
+                        value = value[int(key)]
+                    else:
+                        return None
                 else:  # Object key
-                    value = value[key]
+                    if isinstance(value, dict) and key in value:
+                        value = value[key]
+                    else:
+                        return None
             
             return value
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError, ValueError):
             return None
     
     def _format_json_value(self, value: Any, placeholder_key: str) -> str:
