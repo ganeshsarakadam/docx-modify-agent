@@ -179,14 +179,24 @@ class ResumeProcessor(DocxProcessor):
             
         # Find paragraphs that contain bullets and split them properly
         paragraphs_to_process = []
-        for i, paragraph in enumerate(self.document.paragraphs):
-            text = paragraph.text
-            if '•' in text and '\n' in text:
-                paragraphs_to_process.append((i, paragraph))
+        standalone_bullets = []
         
-        # Process in reverse order to avoid index shifting
+        for i, paragraph in enumerate(self.document.paragraphs):
+            text = paragraph.text.strip()
+            if '•' in text and '\n' in text:
+                # Multi-line bullets that need splitting
+                paragraphs_to_process.append((i, paragraph))
+            elif text.startswith('•'):
+                # Single-line bullets that need formatting
+                standalone_bullets.append(paragraph)
+        
+        # Process multi-line bullets in reverse order to avoid index shifting
         for para_index, paragraph in reversed(paragraphs_to_process):
             self._split_paragraph_with_bullets(paragraph, para_index)
+            
+        # Apply formatting to standalone bullets
+        for paragraph in standalone_bullets:
+            self._apply_bullet_formatting(paragraph)
             
     def _split_paragraph_with_bullets(self, paragraph, para_index: int) -> None:
         """Split a paragraph containing bullets into separate paragraphs with proper formatting"""
@@ -542,28 +552,28 @@ class ResumeProcessor(DocxProcessor):
         """
         return {
             # Basic fields
-            "NAME": "name",  # Support uppercase NAME
-            "name": "name",
-            "professional_summary": "professional_summary",
-            "PROFESSIONAL_SUMMARY": "professional_summary",  # Uppercase version
-            "TECHNICAL_SKILLS": "technical_skills",  # Uppercase version
-            "technical_skills": "technical_skills",
+            "{{NAME}}": "name",  # Support uppercase NAME
+            "{{name}}": "name",
+            "{{professional_summary}}": "professional_summary",
+            "{{PROFESSIONAL_SUMMARY}}": "professional_summary",  # Uppercase version
+            "{{TECHNICAL_SKILLS}}": "technical_skills",  # Uppercase version
+            "{{technical_skills}}": "technical_skills",
             # Note: PROFESSIONAL_EXPERIENCE and PROJECTS are handled by specialized methods
             # Note: EDUCATION is handled by specialized method
             
             # Experience mappings (simplified - only highlights)
-            "highlights1": "professional_experience.0.highlights",
-            "highlights2": "professional_experience.1.highlights",
-            "highlights3": "professional_experience.2.highlights",
+            "{{highlights1}}": "highlights1",
+            "{{highlights2}}": "highlights2", 
+            "{{highlights3}}": "highlights3",
             
             # Project mappings (simplified - name and highlights only)
-            "projects1": "projects.0.name",
-            "projects2": "projects.1.name",
-            "project1_highlights": "projects.0.highlights",
-            "project2_highlights": "projects.1.highlights",
+            "{{projects1}}": "projects1",
+            "{{projects2}}": "projects2",
+            "{{project1_highlights}}": "project1_highlights",
+            "{{project2_highlights}}": "project2_highlights",
             
             # Education mappings (if needed)
-            "education": "education",
+            "{{education}}": "education",
         }
     
     def _get_nested_json_value(self, data: Dict[str, Any], path: str) -> Any:

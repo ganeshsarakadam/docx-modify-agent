@@ -279,10 +279,17 @@ class DocxProcessor:
         """Apply proper indentation and spacing for bullet points"""
         from docx.shared import Inches, Pt
         
+        # Use List Paragraph style for consistent formatting (matches reference resume)
+        try:
+            paragraph.style = paragraph.part.document.styles['List Paragraph']
+        except KeyError:
+            # Fallback if List Paragraph style doesn't exist
+            pass
+        
         # Set left indentation for bullet points (0.5 inch from left margin)
         paragraph.paragraph_format.left_indent = Inches(0.5)
         
-        # Set hanging indent to align bullet text properly
+        # Set hanging indent to align bullet text properly (-0.25 inch for bullet symbol)
         paragraph.paragraph_format.first_line_indent = Inches(-0.25)
         
         # Add some space after each bullet point for better readability
