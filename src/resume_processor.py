@@ -549,6 +549,7 @@ class ResumeProcessor(DocxProcessor):
     def _get_default_short_mappings(self) -> Dict[str, str]:
         """
         Get default short placeholder mappings for cleaner templates
+        Supports both flat format and array extraction
         """
         return {
             # Basic fields
@@ -561,8 +562,8 @@ class ResumeProcessor(DocxProcessor):
             # Note: PROFESSIONAL_EXPERIENCE and PROJECTS are handled by specialized methods
             # Note: EDUCATION is handled by specialized method
             
-            # Experience mappings (simplified - only highlights)
-            "{{highlights1}}": "highlights1",
+            # Experience mappings (supports both flat and array extraction)
+            "{{highlights1}}": "highlights1",  # First try flat format
             "{{highlights2}}": "highlights2", 
             "{{highlights3}}": "highlights3",
             
@@ -579,26 +580,149 @@ class ResumeProcessor(DocxProcessor):
     def _get_nested_json_value(self, data: Dict[str, Any], path: str) -> Any:
         """
         Get value from nested JSON using dot notation or array indices
-        Examples: 'name', 'contact.email', 'professional_experience.0.company'
+        Enhanced to support array extraction for highlights
+        Examples: 
+        - 'name' 
+        - 'contact.email' 
+        - 'professional_experience.0.company'
+        - 'highlights1' (tries flat format first, then extracts from arrays)
         """
         try:
-            keys = path.split('.')
-            value = data
+            # First try direct path lookup
+            direct_value = self._get_direct_nested_value(data, path)
+            if direct_value is not None:
+                return direct_value
             
-            for key in keys:
-                if key.isdigit():  # Array index
-                    if isinstance(value, list) and int(key) < len(value):
-                        value = value[int(key)]
-                    else:
-                        return None
-                else:  # Object key
-                    if isinstance(value, dict) and key in value:
-                        value = value[key]
-                    else:
-                        return None
+            # If direct lookup fails, try smart array extraction for highlights
+            if path.startswith('highlights') and path[-1].isdigit():
+                return self._extract_highlight_from_arrays(data, path)
             
-            return value
-        except (KeyError, IndexError, TypeError, ValueError):
+            # Try smart extraction for projects
+            if path.startswith('project') and ('highlights' in path or path.endswith(('1', '2'))):
+                return self._extract_project_info(data, path)
+                
+            return None
+            
+        except Exception as e:
+            print(f"DEBUG: Error getting nested value for '{path}': {e}")
+            return None
+    
+    def _get_direct_nested_value(self, data: Dict[str, Any], path: str) -> Any:
+        """Get value using direct nested path lookup"""
+        keys = path.split('.')
+        value = data
+        
+        for key in keys:
+            if key.isdigit():  # Array index
+                if isinstance(value, list) and int(key) < len(value):
+                    value = value[int(key)]
+                else:
+                    return None
+            else:  # Object key
+                if isinstance(value, dict) and key in value:
+                    value = value[key]
+                else:
+                    return None
+        
+        return value
+    
+    def _extract_highlight_from_arrays(self, data: Dict[str, Any], path: str) -> str:
+        """
+        Extract individual highlights from nested professional_experience arrays
+        Supports multiple formats:
+        1. Format A: professional_experience[0].highlights[0]  (old format)
+        2. Format B: professional_experience[0].highlights1[0] (new format you want)
+        
+        Examples:
+        - highlights1 -> professional_experience[0].highlights1[0] OR professional_experience[0].highlights[0]
+        - highlights2 -> professional_experience[1].highlights2[0] OR professional_experience[0].highlights[1] 
+        - highlights3 -> professional_experience[2].highlights3[0] OR professional_experience[0].highlights[2]
+        """
+        try:
+            # Extract the number from highlightsN
+            highlight_num = int(path[-1])  # Get 1, 2, 3, etc.
+            
+            # Try to get from professional_experience array
+            if 'professional_experience' in data and isinstance(data['professional_experience'], list):
+                experiences = data['professional_experience']
+                
+                # Strategy 1: Try new format - each experience has highlights1, highlights2, etc.
+                # highlights1 -> professional_experience[0].highlights1[ALL] as ARRAY
+                # highlights2 -> professional_experience[1].highlights2[ALL] as ARRAY 
+                # highlights3 -> professional_experience[2].highlights3[ALL] as ARRAY
+                if len(experiences) >= highlight_num:
+                    experience = experiences[highlight_num - 1]  # Convert to 0-based
+                    if isinstance(experience, dict):
+                        highlights_key = f'highlights{highlight_num}'
+                        if highlights_key in experience:
+                            highlights = experience[highlights_key]
+                            if isinstance(highlights, list) and len(highlights) > 0:
+                                # Return the array itself so it can be processed as bullet points
+                                return highlights
+                
+                # Strategy 2: Fallback to old format - first experience has all highlights
+                # highlights1 -> professional_experience[0].highlights[0]
+                # highlights2 -> professional_experience[0].highlights[1] 
+                # highlights3 -> professional_experience[0].highlights[2]
+                if len(experiences) > 0:
+                    first_exp = experiences[0]
+                    if isinstance(first_exp, dict) and 'highlights' in first_exp:
+                        highlights = first_exp['highlights']
+                        if isinstance(highlights, list) and len(highlights) > (highlight_num - 1):
+                            highlight_text = highlights[highlight_num - 1]  # Convert to 0-based
+                            # Add bullet if not present
+                            if not highlight_text.strip().startswith('•'):
+                                return f"•  {highlight_text}"
+                            return highlight_text
+            
+            return None
+            
+        except Exception as e:
+            print(f"DEBUG: Error extracting highlight from arrays: {e}")
+            return None
+    
+    def _extract_project_info(self, data: Dict[str, Any], path: str) -> str:
+        """
+        Extract project information from nested projects array
+        Examples:
+        - projects1 -> projects[0].name
+        - projects2 -> projects[1].name  
+        - project1_highlights -> projects[0].highlights[0]
+        - project2_highlights -> projects[1].highlights[0]
+        """
+        try:
+            if 'projects' not in data or not isinstance(data['projects'], list):
+                return None
+            
+            projects = data['projects']
+            
+            if path == 'projects1' and len(projects) > 0:
+                return projects[0].get('name', '')
+            elif path == 'projects2' and len(projects) > 1:
+                return projects[1].get('name', '')
+            elif path == 'project1_highlights' and len(projects) > 0:
+                return self._get_project_highlight(projects[0])
+            elif path == 'project2_highlights' and len(projects) > 1:
+                return self._get_project_highlight(projects[1])
+                
+            return None
+            
+        except Exception as e:
+            print(f"DEBUG: Error extracting project info: {e}")
+            return None
+    
+    def _get_project_highlight(self, project: Dict[str, Any]) -> str:
+        """Get the first highlight from a project, properly formatted"""
+        try:
+            if 'highlights' in project and isinstance(project['highlights'], list):
+                if len(project['highlights']) > 0:
+                    highlight_text = project['highlights'][0]
+                    # Add bullet if not present
+                    if not highlight_text.strip().startswith('•'):
+                        return f"•  {highlight_text}"
+                    return highlight_text
+            return None
+        except Exception:
             return None
     
     def _format_json_value(self, value: Any, placeholder_key: str) -> str:
@@ -618,7 +742,7 @@ class ResumeProcessor(DocxProcessor):
                 # Each bullet point should be on its own line with consistent formatting
                 bullet_points = []
                 for item in value:
-                    bullet_points.append(f"• {str(item)}")
+                    bullet_points.append(f"•  {str(item)}")
                 
                 # Join with line breaks for proper spacing in Word
                 return '\n'.join(bullet_points)

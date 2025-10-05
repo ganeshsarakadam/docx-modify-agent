@@ -366,7 +366,7 @@ class DocxProcessor:
                 if placeholder_start != -1:
                     # Instead of clearing the entire paragraph, use the formatting-preserving replacement
                     count = self._replace_with_formatting_preservation(
-                        paragraph, search_text, f"• {bullet_items[0]}", False
+                        paragraph, search_text, f"•  {bullet_items[0]}", False
                     )
                     
                     if count > 0:
@@ -382,7 +382,7 @@ class DocxProcessor:
                         for i, item in enumerate(bullet_items[1:], 1):
                             # Create new paragraph for each additional bullet point
                             new_paragraph = self.document.add_paragraph()
-                            bullet_run = new_paragraph.add_run(f"• {item}")
+                            bullet_run = new_paragraph.add_run(f"•  {item}")
                             if template_bullet_style:
                                 self._apply_run_formatting(bullet_run, template_bullet_style)
                             
