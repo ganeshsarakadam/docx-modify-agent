@@ -1,0 +1,22 @@
+{{NAME}}
+{{contact.phone}} | {{contact.email}} |   {{contact.linkedin}}
+PROFESSIONAL SUMMARY	
+{{professional_summary}}
+TECHNICAL SKILLS	
+Skills & Core: {{technical_skills}}
+PROFESSIONAL EXPERIENCE	
+{{company1}}:{{location1}},{{title1}}	Aug 2024 – Aug 2025
+   {{highlights1}}
+{{company2}}:{{location2}},{{title2}}	    Mar 2021 – Aug 2022
+   {{highlights2}}
+{{company3}}:{{location3}}, {{title3}}	  Mar 2018 – Mar 2021
+   {{highlights3}}
+PROJECTS	
+{{projects1}}
+{{project1_highlights}}
+
+{{projects2}}
+{{project2_highlights}}
+EDUCATION	
+Master of Science in Computer Science, Ohio University                                                                                        August 2022 – May 2024
+Bachelor of Technology in Computer Science, JNTUH                                                                                        August 2014 – March 2018                                                       
